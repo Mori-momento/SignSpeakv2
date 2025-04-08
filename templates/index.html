@@ -2,236 +2,152 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Real-time ASL Sign Recognition</title>
+<title>ASL Recognition</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; display: flex; flex-direction: column; align-items: center; }
-h1 { color: #333; text-align: center; }
-.container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
-.video-container { position: relative; width: 640px; height: 480px; border: 1px solid #ccc; background-color: #000; }
-video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-canvas { z-index: 10; } /* Ensure canvas is on top */
-.results-container { display: flex; justify-content: space-around; width: 100%; max-width: 640px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-.prediction-box { text-align: center; }
-.prediction-box h3 { margin-top: 0; color: #555; }
-.prediction-label { font-size: 1.5em; font-weight: bold; color: #007bff; min-height: 1.5em; /* Prevent layout shift */ }
-.confidence { font-size: 0.9em; color: #777; }
-#status { margin-top: 10px; font-style: italic; color: #666; text-align: center; }
+body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    margin: 0; padding: 0;
+    display: flex; flex-direction: row;
+    height: 100vh; overflow: hidden;
+}
+.left-panel {
+    flex: 2;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 20px; box-sizing: border-box;
+}
+.video-container {
+    border: 3px solid #333;
+    width: 640px; height: 480px;
+    margin-bottom: 20px;
+}
+.video-container img {
+    width: 100%; height: 100%;
+}
+.predictions {
+    display: flex; justify-content: space-around; width: 640px;
+}
+.pred-box {
+    background: #fff; padding: 10px 20px; border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    font-size: 1.2em; font-weight: bold;
+}
+#ensemble { font-size: 1.5em; color: #007bff; }
+
+.right-panel {
+    flex: 1;
+    display: flex; flex-direction: column; padding: 20px; box-sizing: border-box;
+}
+#transcript {
+    flex: 1;
+    background: #fff; border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    padding: 15px; overflow-y: auto;
+    font-size: 1.5em; line-height: 1.4;
+    white-space: pre-wrap;
+}
+#candidate {
+    font-size: 2em; font-weight: bold; color: #28a745; margin-top: 10px;
+}
 </style>
-<!-- Load MediaPipe libraries -->
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-
-<h1>Real-time ASL Sign Recognition</h1>
-
-<div class="container">
+<div class="left-panel">
     <div class="video-container">
-        <video id="input_video" autoplay playsinline></video>
-        <canvas id="output_canvas" width="640" height="480"></canvas>
+        <img src="{{ url_for('video_feed') }}" alt="Webcam stream">
     </div>
-    <div id="status">Initializing...</div>
-    <div class="results-container">
-        <div class="prediction-box">
-            <h3>SVM</h3>
-            <div id="svm_prediction" class="prediction-label">-</div>
-            <div id="svm_confidence" class="confidence">Confidence: -</div>
-        </div>
-        <div class="prediction-box">
-            <h3>CNN</h3>
-            <div id="cnn_prediction" class="prediction-label">-</div>
-            <div id="cnn_confidence" class="confidence">Confidence: -</div>
-        </div>
-        <div class="prediction-box">
-            <h3>Ensemble</h3>
-            <div id="ensemble_prediction" class="prediction-label">-</div>
-            <div id="ensemble_confidence" class="confidence">Confidence: -</div>
-        </div>
+    <div class="predictions">
+        <div class="pred-box" id="svm">SVM</div>
+        <div class="pred-box" id="cnn">CNN</div>
+        <div class="pred-box" id="ensemble">ENSEMBLE</div>
     </div>
+    <div id="candidate"> </div>
+</div>
+<div class="right-panel">
+    <div id="transcript"></div>
 </div>
 
-<script type="module">
-    const videoElement = document.getElementById('input_video');
-    const canvasElement = document.getElementById('output_canvas');
-    const canvasCtx = canvasElement.getContext('2d');
-    const statusElement = document.getElementById('status');
+<script>
+const bufferSize = 8; // ~1.6 seconds
+const cooldownFrames = 8; // ~1.6 seconds cooldown after accepting a letter
+let ensembleBuffer = [];
+let lastAppendedLetter = "";
+let currentWord = "";
+let transcriptText = "";
+let cooldownCounter = 0;
 
-    const svmPredictionElement = document.getElementById('svm_prediction');
-    const svmConfidenceElement = document.getElementById('svm_confidence');
-    const cnnPredictionElement = document.getElementById('cnn_prediction');
-    const cnnConfidenceElement = document.getElementById('cnn_confidence');
-    const ensemblePredictionElement = document.getElementById('ensemble_prediction');
-    const ensembleConfidenceElement = document.getElementById('ensemble_confidence');
+function pollPredictions() {
+    fetch('/predictions')
+        .then(response => response.json())
+        .then(data => {
+            document.getElementById('svm').textContent = data.svm || "SVM";
+            document.getElementById('cnn').textContent = data.cnn || "CNN";
+            document.getElementById('ensemble').textContent = data.ensemble || "ENSEMBLE";
 
-    let lastPredictionTime = 0;
-    const predictionInterval = 300; // ms - Send prediction every 300ms
-
-    // --- Normalization Function (JavaScript Replica) ---
-    function normalizeLandmarks(landmarks) {
-        if (!landmarks || landmarks.length !== 21) {
-            return null; // Invalid input
-        }
-
-        // Convert to a more usable format (array of objects with x, y, z)
-        const points = landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }));
-
-        // 1. Calculate translation vector (wrist coordinates)
-        const wrist = points[0];
-        const translationVector = { x: wrist.x, y: wrist.y, z: wrist.z };
-
-        // 2. Translate all landmarks
-        const translatedPoints = points.map(p => ({
-            x: p.x - translationVector.x,
-            y: p.y - translationVector.y,
-            z: p.z - translationVector.z
-        }));
-
-        // 3. Calculate scale factor (distance between wrist and middle finger MCP)
-        const middleFingerMCP = translatedPoints[9]; // Landmark 9 after translation
-        const wristOrigin = { x: 0, y: 0, z: 0 }; // Wrist is now at origin
-
-        const dx = middleFingerMCP.x - wristOrigin.x;
-        const dy = middleFingerMCP.y - wristOrigin.y;
-        const dz = middleFingerMCP.z - wristOrigin.z;
-        const scaleFactor = Math.sqrt(dx*dx + dy*dy + dz*dz);
-
-        if (scaleFactor < 1e-6) { // Avoid division by zero or near-zero
-            return null; // Cannot normalize if hand size is negligible
-        }
-
-        // 4. Scale all translated landmarks
-        const normalizedPoints = translatedPoints.map(p => ({
-            x: p.x / scaleFactor,
-            y: p.y / scaleFactor,
-            z: p.z / scaleFactor
-        }));
-
-        // 5. Flatten the normalized points into a 1D array [x0, y0, z0, x1, y1, z1, ...]
-        const flattened = [];
-        normalizedPoints.forEach(p => {
-            flattened.push(p.x, p.y, p.z);
-        });
-
-        return flattened; // Array of 63 numbers
-    }
-
-    // --- MediaPipe Hands Setup ---
-    const hands = new Hands({locateFile: (file) => {
-        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }});
-
-    hands.setOptions({
-        maxNumHands: 1, // Focus on one hand for simplicity, adjust if needed
-        modelComplexity: 1,
-        minDetectionConfidence: 0.6, // Increased confidence
-        minTrackingConfidence: 0.6
-    });
-
-    hands.onResults(onResults);
-
-    // --- Camera Setup ---
-    const camera = new Camera(videoElement, {
-        onFrame: async () => {
-            await hands.send({image: videoElement});
-        },
-        width: 640,
-        height: 480
-    });
-    camera.start();
-    statusElement.textContent = "Camera started. Show your right hand.";
-
-    // --- Results Handling ---
-    function onResults(results) {
-        canvasCtx.save();
-        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-        // Draw the video frame first (optional, if you want video background on canvas)
-        // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-        let handDetected = false;
-
-        if (results.multiHandLandmarks && results.multiHandWorldLandmarks) {
-            // Assuming maxNumHands = 1, so we take the first detected hand
-            // If maxNumHands > 1, you'd need to check results.multiHandedness here
-            // to specifically find the 'Right' hand.
-            if (results.multiHandLandmarks.length > 0) {
-                handDetected = true;
-                const worldLandmarks = results.multiHandWorldLandmarks[0];
-                const imageLandmarks = results.multiHandLandmarks[0];
-
-                // Draw landmarks on canvas
-                drawConnectors(canvasCtx, imageLandmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
-                drawLandmarks(canvasCtx, imageLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
-
-                // --- Prediction Logic ---
-                const now = Date.now();
-                if (now - lastPredictionTime > predictionInterval) {
-                    lastPredictionTime = now;
-                    statusElement.textContent = "Processing...";
-
-                    // Normalize landmarks client-side
-                    const normalizedData = normalizeLandmarks(worldLandmarks);
-
-                    if (normalizedData) {
-                        // Send normalized data to backend
-                        fetch('/predict_realtime', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ landmarks: normalizedData })
-                        })
-                        .then(response => response.json())
-                        .then(data => {
-                            if (data.error) {
-                                console.error("Prediction Error:", data.error);
-                                statusElement.textContent = `Error: ${data.error}`;
-                                clearPredictions();
-                            } else {
-                                // Update prediction displays
-                                svmPredictionElement.textContent = data.svm.prediction;
-                                svmConfidenceElement.textContent = `Confidence: ${(data.svm.confidence * 100).toFixed(1)}%`;
-                                cnnPredictionElement.textContent = data.cnn.prediction;
-                                cnnConfidenceElement.textContent = `Confidence: ${(data.cnn.confidence * 100).toFixed(1)}%`;
-                                ensemblePredictionElement.textContent = data.ensemble.prediction;
-                                ensembleConfidenceElement.textContent = `Confidence: ${(data.ensemble.confidence * 100).toFixed(1)}%`;
-                                statusElement.textContent = "Showing prediction. Keep hand steady.";
-                            }
-                        })
-                        .catch(error => {
-                            console.error('Fetch Error:', error);
-                            statusElement.textContent = "Error sending data to server.";
-                            clearPredictions();
-                        });
-                    } else {
-                         statusElement.textContent = "Could not normalize landmarks.";
-                         clearPredictions();
-                    }
-                } else {
-                     // Keep previous status if not predicting yet
-                     if (!statusElement.textContent.startsWith("Showing prediction")) {
-                         statusElement.textContent = "Hand detected. Hold steady for prediction.";
-                     }
+            if (data.hand_detected && data.ensemble) {
+                ensembleBuffer.push(data.ensemble);
+                if (ensembleBuffer.length > bufferSize) {
+                    ensembleBuffer.shift();
                 }
+
+                const allSame = ensembleBuffer.every(l => l === ensembleBuffer[0]);
+                const candidateLetter = allSame && ensembleBuffer.length === bufferSize ? ensembleBuffer[0] : "";
+
+                document.getElementById('candidate').textContent = candidateLetter;
+
+                if (cooldownCounter > 0) {
+                    cooldownCounter--;
+                } else if (candidateLetter && candidateLetter !== lastAppendedLetter) {
+                    currentWord += candidateLetter;
+                    lastAppendedLetter = candidateLetter;
+                    cooldownCounter = cooldownFrames;
+                    updateTranscript();
+                }
+            } else {
+                // No hand or empty ensemble, reset buffer and candidate
+                ensembleBuffer = [];
+                document.getElementById('candidate').textContent = "";
+                lastAppendedLetter = "";
+                cooldownCounter = 0;
             }
+        })
+        .catch(err => console.error(err));
+}
+
+let lastTranscriptWord = "";
+
+function updateTranscript() {
+    const transcriptDiv = document.getElementById('transcript');
+
+    if (currentWord !== lastTranscriptWord) {
+        // Remove the last word segment if it exists
+        if (!transcriptText.endsWith('\n')) {
+            transcriptText = transcriptText.slice(0, transcriptText.lastIndexOf(lastTranscriptWord));
         }
+        // Append the updated word
+        transcriptText += currentWord;
+        lastTranscriptWord = currentWord;
+        transcriptDiv.textContent = transcriptText;
+        transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+    }
+}
 
-        if (!handDetected) {
-            statusElement.textContent = "No hand detected. Please show your right hand clearly.";
-            clearPredictions();
+setInterval(pollPredictions, 200);
+
+document.addEventListener('keydown', (e) => {
+    if (e.code === 'Space') {
+        // Remove last word segment before adding new line
+        if (!transcriptText.endsWith('\n') && lastTranscriptWord) {
+            transcriptText = transcriptText.slice(0, transcriptText.lastIndexOf(lastTranscriptWord));
         }
-
-        canvasCtx.restore();
+        transcriptText += currentWord + '\n';
+        currentWord = "";
+        lastTranscriptWord = "";
+        const transcriptDiv = document.getElementById('transcript');
+        transcriptDiv.textContent = transcriptText;
+        transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+        e.preventDefault();
     }
-
-    function clearPredictions() {
-        svmPredictionElement.textContent = "-";
-        svmConfidenceElement.textContent = "Confidence: -";
-        cnnPredictionElement.textContent = "-";
-        cnnConfidenceElement.textContent = "Confidence: -";
-        ensemblePredictionElement.textContent = "-";
-        ensembleConfidenceElement.textContent = "Confidence: -";
-    }
-
+});
 </script>
 
 </body>
