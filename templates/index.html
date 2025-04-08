@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ASL Sign Recognition</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 40px; }
+h1 { color: #333; }
+form { margin-bottom: 20px; }
+.result { background: #f0f0f0; padding: 15px; border-radius: 8px; }
+.confidence { font-size: 0.9em; color: #555; }
+</style>
+</head>
+<body>
+<h1>ASL Sign Recognition</h1>
+
+<form method="POST" enctype="multipart/form-data">
+    <label>Select an image of your ASL sign:</label><br><br>
+    <input type="file" name="image" accept="image/*" required>
+    <button type="submit">Upload & Predict</button>
+</form>
+
+{% if svm_pred %}
+<div class="result">
+    <h2>Predictions:</h2>
+    <p><strong>SVM:</strong> {{ svm_pred }} <span class="confidence">(Confidence: {{ (svm_conf*100)|round(2) }}%)</span></p>
+    <p><strong>CNN:</strong> {{ cnn_pred }} <span class="confidence">(Confidence: {{ (cnn_conf*100)|round(2) }}%)</span></p>
+    <p><strong>Ensemble:</strong> {{ ensemble_pred }} <span class="confidence">(Confidence: {{ (ensemble_conf*100)|round(2) }}%)</span></p>
+</div>
+{% elif svm_pred is not none %}
+<div class="result">
+    <p>No hand detected in the image.</p>
+</div>
+{% endif %}
+
+</body>
+</html>

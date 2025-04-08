@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.python-version
+
+# Virtual Environment
+.venv/
+.venv310/
+
+# Data files
+data/*.csv
+
+# Model files
+*.h5
+*.pkl
+
+# IDE
+.vscode/
+.idea/
+
+# Logs and databases
+*.log
+*.sqlite
+
+# Local development
+.env
+.env.local
