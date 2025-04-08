@@ -2,36 +2,237 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>ASL Sign Recognition</title>
+<title>Real-time ASL Sign Recognition</title>
 <style>
-body { font-family: Arial, sans-serif; margin: 40px; }
-h1 { color: #333; }
-form { margin-bottom: 20px; }
-.result { background: #f0f0f0; padding: 15px; border-radius: 8px; }
-.confidence { font-size: 0.9em; color: #555; }
+body { font-family: Arial, sans-serif; margin: 20px; background-color: #f4f4f4; display: flex; flex-direction: column; align-items: center; }
+h1 { color: #333; text-align: center; }
+.container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+.video-container { position: relative; width: 640px; height: 480px; border: 1px solid #ccc; background-color: #000; }
+video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+canvas { z-index: 10; } /* Ensure canvas is on top */
+.results-container { display: flex; justify-content: space-around; width: 100%; max-width: 640px; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.prediction-box { text-align: center; }
+.prediction-box h3 { margin-top: 0; color: #555; }
+.prediction-label { font-size: 1.5em; font-weight: bold; color: #007bff; min-height: 1.5em; /* Prevent layout shift */ }
+.confidence { font-size: 0.9em; color: #777; }
+#status { margin-top: 10px; font-style: italic; color: #666; text-align: center; }
 </style>
+<!-- Load MediaPipe libraries -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-<h1>ASL Sign Recognition</h1>
 
-<form method="POST" enctype="multipart/form-data">
-    <label>Select an image of your ASL sign:</label><br><br>
-    <input type="file" name="image" accept="image/*" required>
-    <button type="submit">Upload & Predict</button>
-</form>
+<h1>Real-time ASL Sign Recognition</h1>
 
-{% if svm_pred %}
-<div class="result">
-    <h2>Predictions:</h2>
-    <p><strong>SVM:</strong> {{ svm_pred }} <span class="confidence">(Confidence: {{ (svm_conf*100)|round(2) }}%)</span></p>
-    <p><strong>CNN:</strong> {{ cnn_pred }} <span class="confidence">(Confidence: {{ (cnn_conf*100)|round(2) }}%)</span></p>
-    <p><strong>Ensemble:</strong> {{ ensemble_pred }} <span class="confidence">(Confidence: {{ (ensemble_conf*100)|round(2) }}%)</span></p>
+<div class="container">
+    <div class="video-container">
+        <video id="input_video" autoplay playsinline></video>
+        <canvas id="output_canvas" width="640" height="480"></canvas>
+    </div>
+    <div id="status">Initializing...</div>
+    <div class="results-container">
+        <div class="prediction-box">
+            <h3>SVM</h3>
+            <div id="svm_prediction" class="prediction-label">-</div>
+            <div id="svm_confidence" class="confidence">Confidence: -</div>
+        </div>
+        <div class="prediction-box">
+            <h3>CNN</h3>
+            <div id="cnn_prediction" class="prediction-label">-</div>
+            <div id="cnn_confidence" class="confidence">Confidence: -</div>
+        </div>
+        <div class="prediction-box">
+            <h3>Ensemble</h3>
+            <div id="ensemble_prediction" class="prediction-label">-</div>
+            <div id="ensemble_confidence" class="confidence">Confidence: -</div>
+        </div>
+    </div>
 </div>
-{% elif svm_pred is not none %}
-<div class="result">
-    <p>No hand detected in the image.</p>
-</div>
-{% endif %}
+
+<script type="module">
+    const videoElement = document.getElementById('input_video');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const statusElement = document.getElementById('status');
+
+    const svmPredictionElement = document.getElementById('svm_prediction');
+    const svmConfidenceElement = document.getElementById('svm_confidence');
+    const cnnPredictionElement = document.getElementById('cnn_prediction');
+    const cnnConfidenceElement = document.getElementById('cnn_confidence');
+    const ensemblePredictionElement = document.getElementById('ensemble_prediction');
+    const ensembleConfidenceElement = document.getElementById('ensemble_confidence');
+
+    let lastPredictionTime = 0;
+    const predictionInterval = 300; // ms - Send prediction every 300ms
+
+    // --- Normalization Function (JavaScript Replica) ---
+    function normalizeLandmarks(landmarks) {
+        if (!landmarks || landmarks.length !== 21) {
+            return null; // Invalid input
+        }
+
+        // Convert to a more usable format (array of objects with x, y, z)
+        const points = landmarks.map(lm => ({ x: lm.x, y: lm.y, z: lm.z }));
+
+        // 1. Calculate translation vector (wrist coordinates)
+        const wrist = points[0];
+        const translationVector = { x: wrist.x, y: wrist.y, z: wrist.z };
+
+        // 2. Translate all landmarks
+        const translatedPoints = points.map(p => ({
+            x: p.x - translationVector.x,
+            y: p.y - translationVector.y,
+            z: p.z - translationVector.z
+        }));
+
+        // 3. Calculate scale factor (distance between wrist and middle finger MCP)
+        const middleFingerMCP = translatedPoints[9]; // Landmark 9 after translation
+        const wristOrigin = { x: 0, y: 0, z: 0 }; // Wrist is now at origin
+
+        const dx = middleFingerMCP.x - wristOrigin.x;
+        const dy = middleFingerMCP.y - wristOrigin.y;
+        const dz = middleFingerMCP.z - wristOrigin.z;
+        const scaleFactor = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+        if (scaleFactor < 1e-6) { // Avoid division by zero or near-zero
+            return null; // Cannot normalize if hand size is negligible
+        }
+
+        // 4. Scale all translated landmarks
+        const normalizedPoints = translatedPoints.map(p => ({
+            x: p.x / scaleFactor,
+            y: p.y / scaleFactor,
+            z: p.z / scaleFactor
+        }));
+
+        // 5. Flatten the normalized points into a 1D array [x0, y0, z0, x1, y1, z1, ...]
+        const flattened = [];
+        normalizedPoints.forEach(p => {
+            flattened.push(p.x, p.y, p.z);
+        });
+
+        return flattened; // Array of 63 numbers
+    }
+
+    // --- MediaPipe Hands Setup ---
+    const hands = new Hands({locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+    }});
+
+    hands.setOptions({
+        maxNumHands: 1, // Focus on one hand for simplicity, adjust if needed
+        modelComplexity: 1,
+        minDetectionConfidence: 0.6, // Increased confidence
+        minTrackingConfidence: 0.6
+    });
+
+    hands.onResults(onResults);
+
+    // --- Camera Setup ---
+    const camera = new Camera(videoElement, {
+        onFrame: async () => {
+            await hands.send({image: videoElement});
+        },
+        width: 640,
+        height: 480
+    });
+    camera.start();
+    statusElement.textContent = "Camera started. Show your right hand.";
+
+    // --- Results Handling ---
+    function onResults(results) {
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+        // Draw the video frame first (optional, if you want video background on canvas)
+        // canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+        let handDetected = false;
+
+        if (results.multiHandLandmarks && results.multiHandWorldLandmarks) {
+            // Assuming maxNumHands = 1, so we take the first detected hand
+            // If maxNumHands > 1, you'd need to check results.multiHandedness here
+            // to specifically find the 'Right' hand.
+            if (results.multiHandLandmarks.length > 0) {
+                handDetected = true;
+                const worldLandmarks = results.multiHandWorldLandmarks[0];
+                const imageLandmarks = results.multiHandLandmarks[0];
+
+                // Draw landmarks on canvas
+                drawConnectors(canvasCtx, imageLandmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 5});
+                drawLandmarks(canvasCtx, imageLandmarks, {color: '#FF0000', lineWidth: 2, radius: 5});
+
+                // --- Prediction Logic ---
+                const now = Date.now();
+                if (now - lastPredictionTime > predictionInterval) {
+                    lastPredictionTime = now;
+                    statusElement.textContent = "Processing...";
+
+                    // Normalize landmarks client-side
+                    const normalizedData = normalizeLandmarks(worldLandmarks);
+
+                    if (normalizedData) {
+                        // Send normalized data to backend
+                        fetch('/predict_realtime', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ landmarks: normalizedData })
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.error) {
+                                console.error("Prediction Error:", data.error);
+                                statusElement.textContent = `Error: ${data.error}`;
+                                clearPredictions();
+                            } else {
+                                // Update prediction displays
+                                svmPredictionElement.textContent = data.svm.prediction;
+                                svmConfidenceElement.textContent = `Confidence: ${(data.svm.confidence * 100).toFixed(1)}%`;
+                                cnnPredictionElement.textContent = data.cnn.prediction;
+                                cnnConfidenceElement.textContent = `Confidence: ${(data.cnn.confidence * 100).toFixed(1)}%`;
+                                ensemblePredictionElement.textContent = data.ensemble.prediction;
+                                ensembleConfidenceElement.textContent = `Confidence: ${(data.ensemble.confidence * 100).toFixed(1)}%`;
+                                statusElement.textContent = "Showing prediction. Keep hand steady.";
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Fetch Error:', error);
+                            statusElement.textContent = "Error sending data to server.";
+                            clearPredictions();
+                        });
+                    } else {
+                         statusElement.textContent = "Could not normalize landmarks.";
+                         clearPredictions();
+                    }
+                } else {
+                     // Keep previous status if not predicting yet
+                     if (!statusElement.textContent.startsWith("Showing prediction")) {
+                         statusElement.textContent = "Hand detected. Hold steady for prediction.";
+                     }
+                }
+            }
+        }
+
+        if (!handDetected) {
+            statusElement.textContent = "No hand detected. Please show your right hand clearly.";
+            clearPredictions();
+        }
+
+        canvasCtx.restore();
+    }
+
+    function clearPredictions() {
+        svmPredictionElement.textContent = "-";
+        svmConfidenceElement.textContent = "Confidence: -";
+        cnnPredictionElement.textContent = "-";
+        cnnConfidenceElement.textContent = "Confidence: -";
+        ensemblePredictionElement.textContent = "-";
+        ensembleConfidenceElement.textContent = "Confidence: -";
+    }
+
+</script>
 
 </body>
 </html>
