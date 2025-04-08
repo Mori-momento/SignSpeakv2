@@ -11,8 +11,8 @@ __pycache__/
 data/*.csv
 
 # Model files
-*.h5
-*.pkl
+best_cnn_model.h5
+label_encoder.pkl
 
 # IDE
 .vscode/
