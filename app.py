@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request
 import cv2
 import numpy as np
 import mediapipe as mp
@@ -17,6 +17,9 @@ with open('label_encoder.pkl', 'rb') as f:
     label_encoder = pickle.load(f)
 
 # Initialize webcam
+
+# Store latest normalized landmarks for on-demand prediction
+latest_norm_landmarks = None
 cap = cv2.VideoCapture(0)
 
 # Initialize MediaPipe
@@ -58,6 +61,8 @@ def generate_frames():
 
             landmark_array = np.array([[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark], dtype=np.float32)
             norm_landmarks = normalize_landmarks(landmark_array).reshape(1, -1)
+            global latest_norm_landmarks
+            latest_norm_landmarks = norm_landmarks
 
             if frame_count % 5 == 0:
                 try:
@@ -83,9 +88,7 @@ def generate_frames():
             latest_preds["hand_detected"] = False
             latest_preds["svm"] = latest_preds["cnn"] = latest_preds["ensemble"] = ""
 
-        # Overlay ensemble prediction
-        text = f"Ensemble: {latest_preds['ensemble']}"
-        cv2.putText(frame, text, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
+        # (Removed) Overlay ensemble prediction
 
         ret, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
@@ -97,6 +100,47 @@ def generate_frames():
 @app.route('/')
 def index():
     return render_template('index.html')
+# Helper function for on-demand prediction
+def predict_from_landmarks(norm_landmarks, mode):
+    result = {}
+    if norm_landmarks is None:
+        result["hand_detected"] = False
+        result["prediction"] = ""
+        return result
+
+    try:
+        if mode == "svm":
+            svm_probs = svm_model.predict_proba(norm_landmarks)[0]
+            svm_idx = np.argmax(svm_probs)
+            svm_label = label_encoder.inverse_transform([svm_idx])[0]
+            result["hand_detected"] = True
+            result["prediction"] = svm_label
+            result["confidence"] = float(np.max(svm_probs))
+        elif mode == "cnn":
+            cnn_probs = cnn_model.predict(norm_landmarks, verbose=0)[0]
+            cnn_idx = np.argmax(cnn_probs)
+            cnn_label = label_encoder.inverse_transform([cnn_idx])[0]
+            result["hand_detected"] = True
+            result["prediction"] = cnn_label
+            result["confidence"] = float(np.max(cnn_probs))
+        elif mode == "ensemble":
+            svm_probs = svm_model.predict_proba(norm_landmarks)[0]
+            cnn_probs = cnn_model.predict(norm_landmarks, verbose=0)[0]
+            avg_probs = (svm_probs + cnn_probs) / 2
+            ensemble_idx = np.argmax(avg_probs)
+            ensemble_label = label_encoder.inverse_transform([ensemble_idx])[0]
+            result["hand_detected"] = True
+            result["prediction"] = ensemble_label
+            result["svm_confidence"] = float(np.max(svm_probs))
+            result["cnn_confidence"] = float(np.max(cnn_probs))
+        else:
+            result["hand_detected"] = False
+            result["prediction"] = ""
+    except Exception as e:
+        result["hand_detected"] = False
+        result["prediction"] = "Error"
+        result["error"] = str(e)
+    return result
 
 @app.route('/video_feed')
 def video_feed():
@@ -104,8 +148,13 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/predictions')
+
+@app.route('/predictions', methods=["GET"])
 def predictions():
-    return jsonify(latest_preds)
+    mode = request.args.get("mode", "ensemble")
+    # Use latest_norm_landmarks for on-demand prediction
+    result = predict_from_landmarks(latest_norm_landmarks, mode)
+    return jsonify(result)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
