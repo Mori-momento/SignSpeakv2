@@ -271,6 +271,11 @@ body {
         inset 2px 2px 5px #d1d1d1,
         inset -2px -2px 5px #ffffff;
     transition: all 0.3s ease;
+    word-wrap: break-word;
+    word-break: break-all;
+    white-space: pre-wrap;
+    max-width: 100%;
+    overflow-wrap: break-word;
 }
 
 .transcript-line:last-child {
@@ -580,11 +585,7 @@ function updateTranscript() {
     existingCursors.forEach(cursor => cursor.remove());
 
     if (currentWord !== lastTranscriptWord) {
-        // Remove the last word segment if it exists
-        if (currentLineDiv.textContent.length > 0) {
-            currentLineDiv.textContent = currentLineDiv.textContent.slice(0, currentLineDiv.textContent.lastIndexOf(lastTranscriptWord));
-        }
-        // Append the updated word
+        // Clear the current line and set new content
         currentLineDiv.textContent = currentWord;
 
         // Add cursor after the text

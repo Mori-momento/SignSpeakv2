@@ -27,6 +27,17 @@ mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(static_image_mode=False, max_num_hands=1, model_complexity=1, min_detection_confidence=0.5, min_tracking_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
 
+# Define custom drawing specs
+landmark_drawing_spec = mp_drawing.DrawingSpec(
+    color=(0,0,0),  # Green color in BGR
+    thickness=1,        # Line thickness
+    circle_radius=2     # Size of landmark points
+)
+connection_drawing_spec = mp_drawing.DrawingSpec(
+    color=(255, 255, 255),  # White color in BGR
+    thickness=1            # Line thickness
+)
+
 # Global state for predictions
 latest_preds = {
     "svm": "",
@@ -63,7 +74,13 @@ def generate_frames():
         else:
             latest_preds["hand_detected"] = True
             hand_landmarks = results.multi_hand_landmarks[0]
-            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            mp_drawing.draw_landmarks(
+                frame, 
+                hand_landmarks, 
+                mp_hands.HAND_CONNECTIONS,
+                landmark_drawing_spec,
+                connection_drawing_spec
+            )
 
             landmark_array = np.array([[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark], dtype=np.float32)
             norm_landmarks = normalize_landmarks(landmark_array).reshape(1, -1)
