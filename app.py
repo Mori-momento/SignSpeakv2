@@ -54,14 +54,19 @@ def generate_frames():
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(frame_rgb)
 
-        if results.multi_hand_landmarks:
+        global latest_norm_landmarks
+        # Reset landmarks when no hand is detected
+        if not results.multi_hand_landmarks:
+            latest_norm_landmarks = None
+            latest_preds["hand_detected"] = False
+            latest_preds["svm"] = latest_preds["cnn"] = latest_preds["ensemble"] = ""
+        else:
             latest_preds["hand_detected"] = True
             hand_landmarks = results.multi_hand_landmarks[0]
             mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
 
             landmark_array = np.array([[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark], dtype=np.float32)
             norm_landmarks = normalize_landmarks(landmark_array).reshape(1, -1)
-            global latest_norm_landmarks
             latest_norm_landmarks = norm_landmarks
 
             if frame_count % 5 == 0:
@@ -84,11 +89,6 @@ def generate_frames():
                 except Exception as e:
                     print(f"Prediction error: {e}")
                     latest_preds["svm"] = latest_preds["cnn"] = latest_preds["ensemble"] = "Error"
-        else:
-            latest_preds["hand_detected"] = False
-            latest_preds["svm"] = latest_preds["cnn"] = latest_preds["ensemble"] = ""
-
-        # (Removed) Overlay ensemble prediction
 
         ret, buffer = cv2.imencode('.jpg', frame)
         frame_bytes = buffer.tobytes()
@@ -102,10 +102,13 @@ def index():
     return render_template('index.html')
 # Helper function for on-demand prediction
 def predict_from_landmarks(norm_landmarks, mode):
-    result = {}
+    result = {
+        "hand_detected": False,
+        "prediction": ""
+    }
+    
+    # If no landmarks, return early with hand_detected = False
     if norm_landmarks is None:
-        result["hand_detected"] = False
-        result["prediction"] = ""
         return result
 
     try:
@@ -133,13 +136,9 @@ def predict_from_landmarks(norm_landmarks, mode):
             result["prediction"] = ensemble_label
             result["svm_confidence"] = float(np.max(svm_probs))
             result["cnn_confidence"] = float(np.max(cnn_probs))
-        else:
-            result["hand_detected"] = False
-            result["prediction"] = ""
     except Exception as e:
-        result["hand_detected"] = False
-        result["prediction"] = "Error"
         result["error"] = str(e)
+        
     return result
 
 @app.route('/video_feed')

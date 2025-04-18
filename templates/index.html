@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -147,20 +148,57 @@ body {
 }
 .neumorphic-panel {
     flex: 1;
-    background: #e0e0e0;
+    background: #f0f0f3;  /* Slightly lighter background */
     border-radius: 20px;
     box-shadow:
         8px 8px 15px #bebebe,
         -8px -8px 15px #ffffff;
-    padding: 20px;
+    padding: 15px;
     font-family: 'Segoe UI', sans-serif;
-    font-size: 1.2rem;
+    font-size: 3.2rem;
+    font-weight: bold;
     color: #333333;
     overflow-y: auto;
     white-space: pre-wrap;
     min-height: 350px;
     max-height: 480px;
+
+    scrollbar-width: thin;
+    scrollbar-color: #b0b0b0 transparent; /* Firefox */
 }
+
+/* Webkit (Chrome, Edge, Safari) */
+.neumorphic-panel::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.neumorphic-panel::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 10px;
+    box-shadow: none;
+}
+
+.neumorphic-panel::-webkit-scrollbar-thumb {
+    background: #c0c0c0;
+    border-radius: 10px;
+    box-shadow: inset 2px 2px 4px #bebebe,
+                inset -2px -2px 4px #ffffff;
+    transition: background 0.3s ease;
+}
+
+.neumorphic-panel::-webkit-scrollbar-thumb:hover {
+    background: #a0a0a0;
+}
+
+/* Remove scrollbar buttons (arrows) in WebKit browsers */
+.neumorphic-panel::-webkit-scrollbar-button {
+    display: none;
+    height: 0;
+    width: 0;
+}
+
+
 .flash-success {
     animation: flash-green 0.5s ease-in-out;
 }
@@ -191,6 +229,49 @@ body {
         width: 98vw;
         max-width: 98vw;
     }
+}
+.transcript-line {
+    min-height: 1.2em;
+    padding: 12px 15px;
+    margin: 8px 0;
+    border-radius: 12px;
+    background: #e8e8e8;
+    box-shadow: 
+        inset 2px 2px 5px #d1d1d1,
+        inset -2px -2px 5px #ffffff;
+    transition: all 0.3s ease;
+}
+
+.transcript-line:last-child {
+    /* Highlight the active line with a slightly different effect */
+    background: #e0e0e0;
+    box-shadow: 
+        inset 3px 3px 7px #cccccc,
+        inset -3px -3px 7px #ffffff;
+}
+
+/* Add subtle hover effect */
+.transcript-line:hover {
+    background: #e4e4e4;
+    box-shadow: 
+        inset 3px 3px 6px #d1d1d1,
+        inset -3px -3px 6px #ffffff;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.cursor {
+    display: inline-block;
+    width: 20px;  /* wider to match underscore width */
+    height: 8px;  /* thinner to look like underscore */
+    background-color: #333;
+    margin-left: 2px;
+    vertical-align: bottom;  /* align to text bottom */
+    margin-bottom: 3px;     /* slight lift from bottom */
+    animation: blink 1s step-end infinite;
 }
 </style>
 </head>
@@ -296,66 +377,114 @@ function pollPredictions() {
                 overlay.textContent = "";
             }
 
-            // Letter acceptance logic (unchanged)
-            let candidateLetter = data.prediction;
-            if (data.hand_detected && candidateLetter) {
-                ensembleBuffer.push(candidateLetter);
+            // Letter acceptance logic
+            if (data.hand_detected && data.prediction) {
+                ensembleBuffer.push(data.prediction);
                 if (ensembleBuffer.length > bufferSize) {
                     ensembleBuffer.shift();
                 }
                 const allSame = ensembleBuffer.every(l => l === ensembleBuffer[0]);
-                candidateLetter = allSame && ensembleBuffer.length === bufferSize ? ensembleBuffer[0] : "";
+                const candidateLetter = allSame && ensembleBuffer.length === bufferSize ? ensembleBuffer[0] : "";
 
-                if (cooldownCounter === 0 && candidateLetter && candidateLetter !== lastAppendedLetter) {
-                    triggerBorderAnimation();
-                }
-
-                if (cooldownCounter > 0) {
-                    cooldownCounter--;
-                } else if (candidateLetter && candidateLetter !== lastAppendedLetter) {
-                    currentWord += candidateLetter;
-                    lastAppendedLetter = candidateLetter;
-                    cooldownCounter = cooldownFrames;
-                    updateTranscript();
+                if (candidateLetter) {
+                    if (cooldownCounter === 0) {
+                        triggerBorderAnimation();
+                        currentWord += candidateLetter;
+                        cooldownCounter = cooldownFrames;
+                        updateTranscript();
+                    } else {
+                        cooldownCounter--;
+                    }
                 }
             } else {
+                // Clear the buffer and reset cooldown when hand is not detected
                 ensembleBuffer = [];
-                lastAppendedLetter = "";
                 cooldownCounter = 0;
             }
         })
-        .catch(err => console.error(err));
+        .catch(err => {
+            console.error(err);
+            // Clear everything on error
+            ensembleBuffer = [];
+            cooldownCounter = 0;
+            const overlay = document.getElementById("prediction-overlay");
+            if (overlay) overlay.textContent = "";
+        });
 }
 
 let lastTranscriptWord = "";
 
 function updateTranscript() {
     const transcriptDiv = document.getElementById('transcript');
+    const currentLineDiv = transcriptDiv.lastElementChild || createNewLineDiv(transcriptDiv);
+
+    // Remove existing cursors
+    const existingCursors = document.querySelectorAll('.cursor');
+    existingCursors.forEach(cursor => cursor.remove());
 
     if (currentWord !== lastTranscriptWord) {
         // Remove the last word segment if it exists
-        if (!transcriptText.endsWith('\n')) {
-            transcriptText = transcriptText.slice(0, transcriptText.lastIndexOf(lastTranscriptWord));
+        if (currentLineDiv.textContent.length > 0) {
+            currentLineDiv.textContent = currentLineDiv.textContent.slice(0, currentLineDiv.textContent.lastIndexOf(lastTranscriptWord));
         }
         // Append the updated word
-        transcriptText += currentWord;
+        currentLineDiv.textContent = currentWord;
+        
+        // Add cursor after the text
+        const cursorSpan = document.createElement('span');
+        cursorSpan.className = 'cursor';
+        currentLineDiv.appendChild(cursorSpan);
+        
         lastTranscriptWord = currentWord;
-        transcriptDiv.textContent = transcriptText;
         transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+    } else if (!currentLineDiv.querySelector('.cursor')) {
+        // Add cursor if it doesn't exist
+        const cursorSpan = document.createElement('span');
+        cursorSpan.className = 'cursor';
+        currentLineDiv.appendChild(cursorSpan);
     }
+}
+
+function createNewLineDiv(parentDiv) {
+    const lineDiv = document.createElement('div');
+    lineDiv.className = 'transcript-line';
+    parentDiv.appendChild(lineDiv);
+    return lineDiv;
 }
 
 document.addEventListener('keydown', (e) => {
     if (e.code === 'Space') {
-        // Remove last word segment before adding new line
-        if (!transcriptText.endsWith('\n') && lastTranscriptWord) {
-            transcriptText = transcriptText.slice(0, transcriptText.lastIndexOf(lastTranscriptWord));
+        const transcriptDiv = document.getElementById('transcript');
+        const currentLineDiv = transcriptDiv.lastElementChild;
+
+        // Check if current line is empty (excluding the cursor element)
+        const isCurrentLineEmpty = !currentLineDiv || 
+            (currentLineDiv.textContent.trim() === "" && !currentWord);
+
+        // Don't create new line if current line is empty
+        if (isCurrentLineEmpty) {
+            e.preventDefault();
+            return;
         }
-        transcriptText += currentWord + '\n';
+
+        // Remove last word segment before adding new line
+        if (currentLineDiv && lastTranscriptWord) {
+            // Remove existing cursor
+            const cursor = currentLineDiv.querySelector('.cursor');
+            if (cursor) cursor.remove();
+            
+            currentLineDiv.textContent = currentLineDiv.textContent.slice(0, currentLineDiv.textContent.lastIndexOf(lastTranscriptWord));
+            currentLineDiv.textContent += currentWord;
+        }
+
+        // Create new line div with cursor
+        const newLineDiv = createNewLineDiv(transcriptDiv);
+        const cursorSpan = document.createElement('span');
+        cursorSpan.className = 'cursor';
+        newLineDiv.appendChild(cursorSpan);
+        
         currentWord = "";
         lastTranscriptWord = "";
-        const transcriptDiv = document.getElementById('transcript');
-        transcriptDiv.textContent = transcriptText;
         transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
         e.preventDefault();
     }
@@ -364,7 +493,9 @@ document.addEventListener('keydown', (e) => {
 // Download transcript as .txt
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('download-btn').addEventListener('click', function() {
-        const text = document.getElementById('transcript').textContent;
+        const transcriptDiv = document.getElementById('transcript');
+        const lines = Array.from(transcriptDiv.children).map(div => div.textContent);
+        const text = lines.join('\n');
         const blob = new Blob([text], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -377,6 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
+// Increase polling interval slightly to give more time for hand detection
 setInterval(pollPredictions, 200);
 </script>
 
