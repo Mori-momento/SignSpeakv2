@@ -28,21 +28,22 @@ body {
 }
 .camera-frame {
     --rotate: 132deg;
-    border-radius: 20px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    /* overflow: hidden;  Removed to allow glow to extend outside */
-    /* No border by default; animated border appears only on .glow-border */
     width: 640px;
     height: 480px;
     margin-bottom: 20px;
-    background: #e0e0e0;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    position: relative;
+}
+
+.gradient-container {
+    position: absolute;
+    inset: 0;
     z-index: 1;
 }
-.camera-frame::before {
+
+.gradient-container::before {
     content: "";
     pointer-events: none;
     position: absolute;
@@ -56,14 +57,8 @@ body {
     opacity: 1;
     transition: background 0.3s;
 }
-.camera-frame.green-border::before,
-.camera-frame.green-border::after {
-    background: linear-gradient(
-        var(--rotate),
-        #2ecc71, #a8ff78 43%, #2ecc71
-    );
-}
-.camera-frame::after {
+
+.gradient-container::after {
     content: "";
     pointer-events: none;
     position: absolute;
@@ -77,31 +72,57 @@ body {
     filter: blur(4px);
     opacity: 1;
     transition: background 0.3s;
-    /* top: -18px; left: -18px; right: -18px; bottom: -18px; */
-    /* transform: scale(1.001); */
-    z-index: 0;
 }
-.camera-frame.green-border::after {
+
+.gradient-container.green-border::before,
+.gradient-container.green-border::after {
     background: linear-gradient(
         var(--rotate),
         #2ecc71, #a8ff78 43%, #2ecc71
     );
+}
+
+.gradient-container.green-border::after {
     filter: blur(50px);
-    /* transform: scale(1.25); */
     transition: background 0.3s, filter 0.3s, transform 0.3s;
 }
-.camera-frame.glow-border::before,
-.camera-frame.glow-border::after {
-    opacity: 1;
+
+.video-container {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: 20px;
+    background: #e0e0e0;
+    overflow: hidden;
+    box-shadow:
+        0 4px 20px rgba(0, 0, 0, 0.3),
+        inset 0 0 15px rgba(0, 0, 0, 0.2);
 }
-/* Remove old border-glow animation */
-.camera-frame img {
+
+.video-container img {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    position: relative;
-    z-index: 2;
-    border-radius: 24px;
+    transform: scaleX(-1);
+    -webkit-transform: scaleX(-1);
+    transition: filter 0.3s ease, mix-blend-mode 0.3s ease;
+}
+
+.video-container img.bw-mode {
+    filter:
+        grayscale(1)
+        contrast(1.2)
+        brightness(0.9)
+        opacity(0.95);
+    mix-blend-mode: normal;
+}
+
+.video-container img.negative-mode {
+    filter:
+        contrast(1.2)
+        brightness(0.9)
+        opacity(0.95);
+    mix-blend-mode: difference;
 }
 .predictions {
     display: flex;
@@ -125,18 +146,28 @@ body {
     color: #333333;
     outline: none;
 }
+
 .neumorphic-button:active {
-}
-.neumorphic-button.active-mode {
-    background: #d0e6ff !important;
-    color: #3c67e3 !important;
     box-shadow:
-        0 0 0 2px #3c67e3,
-        6px 6px 10px #bebebe,
-        -6px -6px 10px #ffffff;
+        inset 6px 6px 10px #bebebe,
+        inset -6px -6px 10px #ffffff;
 }
+
+.neumorphic-button.active-mode {
+    background: #e0e0e0;
+    color: rgb(65 94 179);
+    box-shadow:
+        inset 6px 6px 10px #bebebe,
+        inset -6px -6px 10px #ffffff;
+    transform: scale(0.98);
+}
+
 .neumorphic-button#ensemble {
     font-size: 1.5em;
+    color: #2ecc71;
+}
+
+.neumorphic-button#ensemble.active-mode {
     color: #2ecc71;
 }
 .right-panel {
@@ -236,7 +267,7 @@ body {
     margin: 8px 0;
     border-radius: 12px;
     background: #e8e8e8;
-    box-shadow: 
+    box-shadow:
         inset 2px 2px 5px #d1d1d1,
         inset -2px -2px 5px #ffffff;
     transition: all 0.3s ease;
@@ -245,7 +276,7 @@ body {
 .transcript-line:last-child {
     /* Highlight the active line with a slightly different effect */
     background: #e0e0e0;
-    box-shadow: 
+    box-shadow:
         inset 3px 3px 7px #cccccc,
         inset -3px -3px 7px #ffffff;
 }
@@ -253,7 +284,7 @@ body {
 /* Add subtle hover effect */
 .transcript-line:hover {
     background: #e4e4e4;
-    box-shadow: 
+    box-shadow:
         inset 3px 3px 6px #d1d1d1,
         inset -3px -3px 6px #ffffff;
 }
@@ -273,13 +304,124 @@ body {
     margin-bottom: 3px;     /* slight lift from bottom */
     animation: blink 1s step-end infinite;
 }
+
+/* Neumorphic Toggle Switch */
+.toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: right;
+    margin-bottom: 15px;
+    width: 640px;
+}
+
+.toggle-label {
+    margin-right: 10px;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.neumorphic-toggle {
+    position: relative;
+    display: inline-block;
+    width: 75px;
+    height: 34px;
+    cursor: pointer;
+}
+
+.neumorphic-toggle input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.toggle-slider {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #e0e0e0;
+    border-radius: 34px;
+    box-shadow:
+        inset 3px 3px 6px #bebebe,
+        inset -3px -3px 6px #ffffff;
+    transition: 0.4s;
+}
+
+.toggle-slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 4px;
+    bottom: 4px;
+    background-color: #f0f0f3;
+    border-radius: 50%;
+    box-shadow:
+        2px 2px 4px #bebebe,
+        -2px -2px 4px #ffffff;
+    transition: 0.4s;
+    z-index: 2;
+}
+
+.neumorphic-toggle input:checked + .toggle-slider:before {
+    transform: translateX(41px);
+    background-color: #898989
+}
+
+.toggle-labels {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px;
+    box-sizing: border-box;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.toggle-label-on, .toggle-label-off {
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: 0.4s;
+}
+
+.toggle-label-on {
+    padding-right: 15px;
+    color: #333;
+}
+
+.toggle-label-off {
+    padding-left: 15px;
+    color: #333;
+}
+
+.neumorphic-toggle input:checked ~ .toggle-labels .toggle-label-on {
+    color: #fff;
+}
+
+.neumorphic-toggle input:not(:checked) ~ .toggle-labels .toggle-label-off {
+    color: #fff;
+}
 </style>
 </head>
 <body>
 <div class="left-panel">
+    <div class="toggle-container">
+        <label class="neumorphic-toggle" for="blend-mode-toggle">
+            <input type="checkbox" id="blend-mode-toggle">
+            <span class="toggle-slider"></span>
+        </label>
+    </div>
     <div class="camera-frame">
         <div id="prediction-overlay" style="position:absolute;top:18px;right:24px;z-index:10;font-size:2.2em;font-weight:bold;color:#41e33c;"></div>
-        <img src="{{ url_for('video_feed') }}" alt="Webcam stream" style="position:relative;z-index:2;">
+        <div class="gradient-container"></div>
+        <div class="video-container">
+            <img src="{{ url_for('video_feed') }}" alt="Webcam stream">
+        </div>
     </div>
     <div class="predictions">
         <div class="neumorphic-button" id="svm" data-mode="svm">SVM</div>
@@ -320,11 +462,11 @@ function startContinuousRotate() {
 document.addEventListener('DOMContentLoaded', startContinuousRotate);
 
 function triggerBorderAnimation() {
-    const frame = document.querySelector('.camera-frame');
-    if (!frame) return;
-    frame.classList.add('green-border');
+    const gradientContainer = document.querySelector('.gradient-container');
+    if (!gradientContainer) return;
+    gradientContainer.classList.add('green-border');
     setTimeout(() => {
-        frame.classList.remove('green-border');
+        gradientContainer.classList.remove('green-border');
     }, 700);
 }
 
@@ -363,15 +505,30 @@ function pollPredictions() {
             const overlay = document.getElementById("prediction-overlay");
             if (data.hand_detected && data.prediction) {
                 if (selectedMode === "ensemble") {
+                    // Preserve the current color and text-shadow styles
+                    const currentColor = overlay.style.color || '#41e33c';
+                    const currentShadow = overlay.style.textShadow || '';
+
                     overlay.innerHTML = `
-                        <span style="color:#41e33c">${data.prediction}</span>
+                        <span>${data.prediction}</span>
                         <span style="font-size:0.6em;display:block;margin-top:2px;">
                             SVM: ${(data.svm_confidence*100).toFixed(1)}%<br>
                             CNN: ${(data.cnn_confidence*100).toFixed(1)}%
                         </span>
                     `;
+
+                    // Re-apply the current styles
+                    overlay.style.color = currentColor;
+                    overlay.style.textShadow = currentShadow;
                 } else {
-                    overlay.textContent = data.prediction;
+                    // Preserve the current style but update the text
+                    const currentText = data.prediction;
+                    const currentColor = overlay.style.color || '#41e33c';
+                    const currentShadow = overlay.style.textShadow || '';
+
+                    overlay.textContent = currentText;
+                    overlay.style.color = currentColor;
+                    overlay.style.textShadow = currentShadow;
                 }
             } else {
                 overlay.textContent = "";
@@ -429,12 +586,12 @@ function updateTranscript() {
         }
         // Append the updated word
         currentLineDiv.textContent = currentWord;
-        
+
         // Add cursor after the text
         const cursorSpan = document.createElement('span');
         cursorSpan.className = 'cursor';
         currentLineDiv.appendChild(cursorSpan);
-        
+
         lastTranscriptWord = currentWord;
         transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
     } else if (!currentLineDiv.querySelector('.cursor')) {
@@ -458,7 +615,7 @@ document.addEventListener('keydown', (e) => {
         const currentLineDiv = transcriptDiv.lastElementChild;
 
         // Check if current line is empty (excluding the cursor element)
-        const isCurrentLineEmpty = !currentLineDiv || 
+        const isCurrentLineEmpty = !currentLineDiv ||
             (currentLineDiv.textContent.trim() === "" && !currentWord);
 
         // Don't create new line if current line is empty
@@ -472,7 +629,7 @@ document.addEventListener('keydown', (e) => {
             // Remove existing cursor
             const cursor = currentLineDiv.querySelector('.cursor');
             if (cursor) cursor.remove();
-            
+
             currentLineDiv.textContent = currentLineDiv.textContent.slice(0, currentLineDiv.textContent.lastIndexOf(lastTranscriptWord));
             currentLineDiv.textContent += currentWord;
         }
@@ -482,7 +639,7 @@ document.addEventListener('keydown', (e) => {
         const cursorSpan = document.createElement('span');
         cursorSpan.className = 'cursor';
         newLineDiv.appendChild(cursorSpan);
-        
+
         currentWord = "";
         lastTranscriptWord = "";
         transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
@@ -492,6 +649,7 @@ document.addEventListener('keydown', (e) => {
 
 // Download transcript as .txt
 document.addEventListener('DOMContentLoaded', () => {
+    // Download button functionality
     document.getElementById('download-btn').addEventListener('click', function() {
         const transcriptDiv = document.getElementById('transcript');
         const lines = Array.from(transcriptDiv.children).map(div => div.textContent);
@@ -505,6 +663,40 @@ document.addEventListener('DOMContentLoaded', () => {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+    });
+
+    // Filter mode toggle functionality
+    const filterModeToggle = document.getElementById('blend-mode-toggle');
+    const videoImg = document.querySelector('.video-container img');
+    const overlay = document.getElementById('prediction-overlay');
+
+    // Function to update prediction overlay text style based on filter mode
+    function updateOverlayStyle(isBlackAndWhite) {
+        if (isBlackAndWhite) {
+            // White text with black border for B&W mode
+            overlay.style.color = '#ffffff';
+            overlay.style.textShadow = '2px 2px 2px #000, -2px -2px 2px #000, 2px -2px 2px #000, -2px 2px 2px #000';
+        } else {
+            // Green text with white border for negative mode
+            overlay.style.color = '#41e33c';
+            
+        }
+    }
+
+    // Initialize with negative mode (as checkbox is unchecked by default)
+    videoImg.classList.add('negative-mode');
+    updateOverlayStyle(false);
+
+    filterModeToggle.addEventListener('change', function() {
+        if (this.checked) {
+            videoImg.classList.add('bw-mode');
+            videoImg.classList.remove('negative-mode');
+            updateOverlayStyle(true);
+        } else {
+            videoImg.classList.add('negative-mode');
+            videoImg.classList.remove('bw-mode');
+            updateOverlayStyle(false);
+        }
     });
 });
 
