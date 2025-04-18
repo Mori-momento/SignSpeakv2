@@ -1,11 +1,12 @@
-from flask import Flask, render_template, Response, jsonify, request
+from flask import Flask, render_template, Response, jsonify, request, send_from_directory
 import cv2
 import numpy as np
 import mediapipe as mp
 import pickle
 import tensorflow as tf
+import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 
 # Load models
 with open('asl_svm_model.pkl', 'rb') as f:
@@ -75,8 +76,8 @@ def generate_frames():
             latest_preds["hand_detected"] = True
             hand_landmarks = results.multi_hand_landmarks[0]
             mp_drawing.draw_landmarks(
-                frame, 
-                hand_landmarks, 
+                frame,
+                hand_landmarks,
                 mp_hands.HAND_CONNECTIONS,
                 landmark_drawing_spec,
                 connection_drawing_spec
@@ -117,13 +118,17 @@ def generate_frames():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/static/<path:path>')
+def serve_static(path):
+    return send_from_directory('static', path)
 # Helper function for on-demand prediction
 def predict_from_landmarks(norm_landmarks, mode):
     result = {
         "hand_detected": False,
         "prediction": ""
     }
-    
+
     # If no landmarks, return early with hand_detected = False
     if norm_landmarks is None:
         return result
@@ -155,7 +160,7 @@ def predict_from_landmarks(norm_landmarks, mode):
             result["cnn_confidence"] = float(np.max(cnn_probs))
     except Exception as e:
         result["error"] = str(e)
-        
+
     return result
 
 @app.route('/video_feed')
