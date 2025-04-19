@@ -327,7 +327,10 @@ body {
 }
 
 .neumorphic-toggle {
-    position: relative;
+    position:absolute;
+    right:-64px;
+    top: 24px;
+    rotate:90deg;
     display: inline-block;
     width: 75px;
     height: 34px;
@@ -622,9 +625,70 @@ body {
     font-size: 0.9em;
     padding: 8px 15px;
 }
+.transcript-hint {
+    text-align: center;
+    font-size: 0.8em;
+    color: #777;
+    margin-top: 5px;
+    margin-bottom: 10px;
+    font-style: italic;
+}
+/* About Me Icon Styles */
+.about-me-icon {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: #f0f0f3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow:
+        4px 4px 8px #bebebe,
+        -4px -4px 8px #ffffff;
+    z-index: 100;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.about-me-icon:hover {
+    transform: translateY(-3px);
+    box-shadow:
+        6px 6px 10px #bebebe,
+        -6px -6px 10px #ffffff;
+}
+
+.info-icon {
+    position: relative;
+    width: 20px;
+    height: 20px;
+}
+
+.info-icon:before {
+    content: "i";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3c67e3;
+    font-family: serif;
+    font-style: italic;
+    font-weight: bold;
+    font-size: 18px;
+}
 </style>
 </head>
 <body>
+<!-- About Me Icon -->
+<a href="/about" class="about-me-icon" title="About Me">
+    <i class="info-icon"></i>
+</a>
+
 <!-- Welcome Modal -->
 <div id="welcome-modal" class="modal">
     <div class="modal-content">
@@ -684,12 +748,12 @@ body {
 <div class="left-panel">
     <div class="toggle-container">
         <button id="asl-chart-btn" class="neumorphic-button" onclick="showASLChart()">ASL Chart</button>
+    </div>
+    <div class="camera-frame">
         <label class="neumorphic-toggle" for="blend-mode-toggle">
             <input type="checkbox" id="blend-mode-toggle">
             <span class="toggle-slider"></span>
         </label>
-    </div>
-    <div class="camera-frame">
         <div id="prediction-overlay" style="position:absolute;top:18px;right:24px;z-index:10;font-size:2.2em;font-weight:bold;color:#41e33c;"></div>
         <div class="gradient-container"></div>
         <div class="video-container">
@@ -708,6 +772,7 @@ body {
         SignSpeak <span style="font-size:1.2rem;font-weight:normal;">– ASL Recognizer</span>
     </div>
     <div class="neumorphic-panel" id="transcript"></div>
+    <div class="transcript-hint">Press Space for new line, Backspace to delete</div>
     <button class="neumorphic-button" id="download-btn" style="margin-top:18px;width:100%;">Download Transcript</button>
 </div>
 

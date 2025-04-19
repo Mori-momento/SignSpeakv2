@@ -30,12 +30,12 @@ mp_drawing = mp.solutions.drawing_utils
 
 # Define custom drawing specs
 landmark_drawing_spec = mp_drawing.DrawingSpec(
-    color=(0,0,0),  # Green color in BGR
+    color=(0,0,0),  
     thickness=1,        # Line thickness
-    circle_radius=2     # Size of landmark points
+    circle_radius=3     # Size of landmark points
 )
 connection_drawing_spec = mp_drawing.DrawingSpec(
-    color=(255, 255, 255),  # White color in BGR
+    color=(0,0,0),  
     thickness=1            # Line thickness
 )
 
@@ -118,6 +118,10 @@ def generate_frames():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/about')
+def about():
+    return render_template('about.html')
 
 @app.route('/static/<path:path>')
 def serve_static(path):
