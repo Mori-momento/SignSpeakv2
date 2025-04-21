@@ -12,7 +12,6 @@ data/*.csv
 
 # Model files
 best_cnn_model.h5
-label_encoder.pkl
 
 # IDE
 .vscode/
